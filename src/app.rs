@@ -693,6 +693,12 @@ impl App {
                     }
                 }
             }
+            KeyCode::Char('S') => {
+                let path = self.tab().current_dir.clone();
+                let usage_lines = preview::calculate_disk_usage(&path);
+                self.tab_mut().preview_lines = usage_lines;
+                self.status_message = Some("Disk usage calculated".to_string());
+            }
             KeyCode::Char('.') => {
                 let new_hidden = !self.tab().show_hidden;
                 self.tab_mut().show_hidden = new_hidden;
@@ -901,6 +907,12 @@ impl App {
                 self.tab_mut().sort_by = new_sort;
                 self.status_message = Some(format!("Sort: {new_sort:?}"));
                 self.tab_mut().refresh()?;
+            }
+            KeyCode::Char('S') => {
+                let path = self.tab().current_dir.clone();
+                let usage_lines = preview::calculate_disk_usage(&path);
+                self.tab_mut().preview_lines = usage_lines;
+                self.status_message = Some("Disk usage calculated".to_string());
             }
             KeyCode::Char('.') => {
                 let new_hidden = !self.tab().show_hidden;

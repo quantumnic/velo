@@ -28,8 +28,210 @@ pub fn preview_path(path: &Path) -> Vec<PreviewLine> {
         preview_directory(path)
     } else if is_image(path) {
         preview_image_meta(path)
+    } else if is_archive(path) {
+        preview_archive(path)
+    } else if is_markdown(path) {
+        preview_markdown(path)
     } else {
         preview_text_file(path)
+    }
+}
+
+fn is_archive(path: &Path) -> bool {
+    let name = path.to_string_lossy().to_lowercase();
+    name.ends_with(".zip")
+        || name.ends_with(".tar")
+        || name.ends_with(".tar.gz")
+        || name.ends_with(".tgz")
+}
+
+fn is_markdown(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_lowercase())
+            .as_deref(),
+        Some("md" | "markdown" | "mkd")
+    )
+}
+
+fn preview_archive(path: &Path) -> Vec<PreviewLine> {
+    let name = path.to_string_lossy().to_lowercase();
+    let mut lines = vec![PreviewLine {
+        text: format!(
+            "📦 Archive: {}",
+            path.file_name().unwrap_or_default().to_string_lossy()
+        ),
+        style: PreviewStyle::Header,
+    }];
+    if let Ok(meta) = fs::metadata(path) {
+        lines.push(PreviewLine {
+            text: format!("Size: {}", format_size(meta.len())),
+            style: PreviewStyle::Normal,
+        });
+    }
+    lines.push(PreviewLine {
+        text: String::new(),
+        style: PreviewStyle::Normal,
+    });
+    lines.push(PreviewLine {
+        text: "Contents:".to_string(),
+        style: PreviewStyle::Header,
+    });
+
+    let entries = if name.ends_with(".zip") {
+        list_zip_contents(path)
+    } else if name.ends_with(".tar.gz") || name.ends_with(".tgz") {
+        list_tar_gz_contents(path)
+    } else if name.ends_with(".tar") {
+        list_tar_contents(path)
+    } else {
+        Err("Unsupported format".to_string())
+    };
+
+    match entries {
+        Ok(entries) => {
+            lines.push(PreviewLine {
+                text: format!("{} entries", entries.len()),
+                style: PreviewStyle::Normal,
+            });
+            lines.push(PreviewLine {
+                text: String::new(),
+                style: PreviewStyle::Normal,
+            });
+            for entry in entries.into_iter().take(MAX_PREVIEW_LINES - lines.len()) {
+                let icon = if entry.ends_with('/') { "📁" } else { "📄" };
+                lines.push(PreviewLine {
+                    text: format!("  {icon} {entry}"),
+                    style: if entry.ends_with('/') {
+                        PreviewStyle::Directory
+                    } else {
+                        PreviewStyle::Normal
+                    },
+                });
+            }
+        }
+        Err(e) => {
+            lines.push(PreviewLine {
+                text: format!("Error reading archive: {e}"),
+                style: PreviewStyle::Normal,
+            });
+        }
+    }
+    lines
+}
+
+fn list_zip_contents(path: &Path) -> Result<Vec<String>, String> {
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let mut names = Vec::new();
+    for i in 0..archive.len() {
+        if let Ok(entry) = archive.by_index(i) {
+            names.push(entry.name().to_string());
+        }
+    }
+    Ok(names)
+}
+
+fn list_tar_gz_contents(path: &Path) -> Result<Vec<String>, String> {
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let gz = flate2::read::GzDecoder::new(file);
+    let mut archive = tar::Archive::new(gz);
+    let mut names = Vec::new();
+    for entry in archive.entries().map_err(|e| e.to_string())?.flatten() {
+        if let Ok(p) = entry.path() {
+            names.push(p.to_string_lossy().to_string());
+        }
+    }
+    Ok(names)
+}
+
+fn list_tar_contents(path: &Path) -> Result<Vec<String>, String> {
+    let file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut archive = tar::Archive::new(file);
+    let mut names = Vec::new();
+    for entry in archive.entries().map_err(|e| e.to_string())?.flatten() {
+        if let Ok(p) = entry.path() {
+            names.push(p.to_string_lossy().to_string());
+        }
+    }
+    Ok(names)
+}
+
+fn preview_markdown(path: &Path) -> Vec<PreviewLine> {
+    let content = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(e) => {
+            return vec![PreviewLine {
+                text: format!("Error: {e}"),
+                style: PreviewStyle::Normal,
+            }];
+        }
+    };
+
+    let mut lines = Vec::new();
+    for line in content.lines().take(MAX_PREVIEW_LINES) {
+        let (text, style) = render_markdown_line(line);
+        lines.push(PreviewLine { text, style });
+    }
+    if content.lines().count() > MAX_PREVIEW_LINES {
+        lines.push(PreviewLine {
+            text: format!(
+                "... ({} more lines)",
+                content.lines().count() - MAX_PREVIEW_LINES
+            ),
+            style: PreviewStyle::Header,
+        });
+    }
+    lines
+}
+
+fn render_markdown_line(line: &str) -> (String, PreviewStyle) {
+    if let Some(rest) = line.strip_prefix("### ") {
+        (format!("▒ {rest}"), PreviewStyle::Header)
+    } else if let Some(rest) = line.strip_prefix("## ") {
+        (format!("▓ {rest}"), PreviewStyle::Header)
+    } else if let Some(rest) = line.strip_prefix("# ") {
+        (format!("█ {rest}"), PreviewStyle::Header)
+    } else if line.starts_with("#### ") || line.starts_with("##### ") || line.starts_with("###### ")
+    {
+        let content = line.trim_start_matches('#').trim_start();
+        (format!("░ {content}"), PreviewStyle::Header)
+    } else if line.starts_with("```") {
+        (
+            format!("  ╌╌╌ {}", line.trim_start_matches('`')),
+            PreviewStyle::LineNumber,
+        )
+    } else if let Some(rest) = line.strip_prefix("- ") {
+        (format!("  • {rest}"), PreviewStyle::Normal)
+    } else if let Some(rest) = line.strip_prefix("* ") {
+        (format!("  • {rest}"), PreviewStyle::Normal)
+    } else if let Some(rest) = line.strip_prefix("> ") {
+        (format!("  │ {rest}"), PreviewStyle::Directory)
+    } else if line.starts_with("---") || line.starts_with("***") || line.starts_with("___") {
+        (
+            "  ────────────────────────────".to_string(),
+            PreviewStyle::Header,
+        )
+    } else if line.trim().is_empty() {
+        (String::new(), PreviewStyle::Normal)
+    } else {
+        (format!("  {line}"), PreviewStyle::Normal)
+    }
+}
+
+pub fn format_size(bytes: u64) -> String {
+    const KB: u64 = 1024;
+    const MB: u64 = KB * 1024;
+    const GB: u64 = MB * 1024;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{bytes} B")
     }
 }
 
@@ -113,7 +315,6 @@ fn preview_text_file(path: &Path) -> Vec<PreviewLine> {
             });
             break;
         }
-        // We just use the text; terminal coloring would need styled spans
         let _ = h.highlight_line(line, &ss);
         lines.push(PreviewLine {
             text: format!("{:>4} │ {}", i + 1, line.trim_end()),
@@ -154,6 +355,100 @@ fn preview_image_meta(path: &Path) -> Vec<PreviewLine> {
         });
     }
     lines
+}
+
+/// Calculate disk usage of a directory recursively
+pub fn calculate_disk_usage(path: &Path) -> Vec<PreviewLine> {
+    let mut lines = vec![PreviewLine {
+        text: format!("💾 Disk Usage: {}", path.display()),
+        style: PreviewStyle::Header,
+    }];
+
+    if !path.is_dir() {
+        if let Ok(meta) = fs::metadata(path) {
+            lines.push(PreviewLine {
+                text: format!("  Total: {}", format_size(meta.len())),
+                style: PreviewStyle::Normal,
+            });
+        }
+        return lines;
+    }
+
+    let mut entries: Vec<(String, u64, bool)> = Vec::new();
+    if let Ok(dir) = fs::read_dir(path) {
+        for entry in dir.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let size = if is_dir {
+                dir_size(&entry.path())
+            } else {
+                entry.metadata().map(|m| m.len()).unwrap_or(0)
+            };
+            entries.push((name, size, is_dir));
+        }
+    }
+
+    entries.sort_by(|a, b| b.1.cmp(&a.1));
+    let total: u64 = entries.iter().map(|e| e.1).sum();
+
+    lines.push(PreviewLine {
+        text: format!("  Total: {}", format_size(total)),
+        style: PreviewStyle::Header,
+    });
+    lines.push(PreviewLine {
+        text: String::new(),
+        style: PreviewStyle::Normal,
+    });
+
+    let max_bar = 30;
+    for (name, size, is_dir) in entries.iter().take(MAX_PREVIEW_LINES - 4) {
+        let pct = if total > 0 {
+            *size as f64 / total as f64 * 100.0
+        } else {
+            0.0
+        };
+        let bar_len = if total > 0 {
+            (*size as f64 / total as f64 * max_bar as f64) as usize
+        } else {
+            0
+        };
+        let bar: String = "█".repeat(bar_len);
+        let pad: String = "░".repeat(max_bar - bar_len);
+        let icon = if *is_dir { "📁" } else { "📄" };
+        lines.push(PreviewLine {
+            text: format!(
+                "  {icon} {bar}{pad} {:>5.1}% {:>8} {name}",
+                pct,
+                format_size(*size)
+            ),
+            style: if *is_dir {
+                PreviewStyle::Directory
+            } else {
+                PreviewStyle::Normal
+            },
+        });
+    }
+    lines
+}
+
+fn dir_size(path: &Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let ft = entry.file_type().unwrap_or_else(|_| {
+                // fallback: treat as file
+                fs::metadata(entry.path())
+                    .map(|m| m.file_type())
+                    .unwrap_or_else(|_| fs::metadata(".").unwrap().file_type())
+            });
+            if ft.is_dir() {
+                total += dir_size(&entry.path());
+            } else {
+                total += entry.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    total
 }
 
 #[cfg(test)]
@@ -217,5 +512,81 @@ mod tests {
     fn test_preview_style_eq() {
         assert_eq!(PreviewStyle::Normal, PreviewStyle::Normal);
         assert_ne!(PreviewStyle::Normal, PreviewStyle::Header);
+    }
+
+    #[test]
+    fn test_preview_archive_zip() {
+        let tmp = TempDir::new().unwrap();
+        let zip_path = tmp.path().join("test.zip");
+        {
+            let file = fs::File::create(&zip_path).unwrap();
+            let mut zip = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            zip.start_file("hello.txt", options).unwrap();
+            std::io::Write::write_all(&mut zip, b"hello world").unwrap();
+            zip.finish().unwrap();
+        }
+        let lines = preview_path(&zip_path);
+        assert!(lines[0].text.contains("Archive"));
+        assert!(lines.iter().any(|l| l.text.contains("hello.txt")));
+    }
+
+    #[test]
+    fn test_preview_markdown() {
+        let tmp = TempDir::new().unwrap();
+        let f = tmp.path().join("readme.md");
+        fs::write(&f, "# Title\n\nSome text\n\n- item 1\n- item 2\n").unwrap();
+        let lines = preview_path(&f);
+        assert!(lines[0].text.contains("Title"));
+        assert_eq!(lines[0].style, PreviewStyle::Header);
+        assert!(lines.iter().any(|l| l.text.contains("•")));
+    }
+
+    #[test]
+    fn test_is_markdown() {
+        assert!(is_markdown(Path::new("README.md")));
+        assert!(is_markdown(Path::new("doc.markdown")));
+        assert!(!is_markdown(Path::new("file.txt")));
+    }
+
+    #[test]
+    fn test_is_archive() {
+        assert!(is_archive(Path::new("file.zip")));
+        assert!(is_archive(Path::new("file.tar.gz")));
+        assert!(is_archive(Path::new("file.tgz")));
+        assert!(is_archive(Path::new("file.tar")));
+        assert!(!is_archive(Path::new("file.txt")));
+    }
+
+    #[test]
+    fn test_format_size() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(512), "512 B");
+        assert_eq!(format_size(1024), "1.0 KB");
+        assert_eq!(format_size(1048576), "1.0 MB");
+        assert_eq!(format_size(1073741824), "1.0 GB");
+    }
+
+    #[test]
+    fn test_disk_usage() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("a.txt"), "hello").unwrap();
+        fs::create_dir(tmp.path().join("sub")).unwrap();
+        fs::write(tmp.path().join("sub/b.txt"), "world!").unwrap();
+        let lines = calculate_disk_usage(tmp.path());
+        assert!(lines[0].text.contains("Disk Usage"));
+        assert!(lines.iter().any(|l| l.text.contains("Total")));
+        assert!(lines.iter().any(|l| l.text.contains("a.txt")));
+    }
+
+    #[test]
+    fn test_render_markdown_lines() {
+        assert_eq!(render_markdown_line("# Hello").1, PreviewStyle::Header);
+        assert_eq!(render_markdown_line("## Sub").1, PreviewStyle::Header);
+        assert_eq!(render_markdown_line("### Sub2").1, PreviewStyle::Header);
+        assert_eq!(render_markdown_line("- item").0, "  • item");
+        assert_eq!(render_markdown_line("> quote").1, PreviewStyle::Directory);
+        assert_eq!(render_markdown_line("---").1, PreviewStyle::Header);
+        assert_eq!(render_markdown_line("plain text").0, "  plain text");
     }
 }
