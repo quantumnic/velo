@@ -14,9 +14,33 @@ pub enum OpKind {
     Move,
 }
 
+/// Find a non-conflicting destination path by appending ` (N)` if needed.
+fn resolve_conflict(dest_dir: &Path, file_name: &std::ffi::OsStr) -> PathBuf {
+    let base = dest_dir.join(file_name);
+    if !base.exists() {
+        return base;
+    }
+    let name = file_name.to_string_lossy();
+    let (stem, ext) = match name.rfind('.') {
+        Some(i) if i > 0 => (&name[..i], Some(&name[i..])),
+        _ => (name.as_ref(), None),
+    };
+    for n in 1u32.. {
+        let new_name = match ext {
+            Some(ext) => format!("{stem} ({n}){ext}"),
+            None => format!("{stem} ({n})"),
+        };
+        let candidate = dest_dir.join(&new_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    unreachable!()
+}
+
 pub fn copy_file(src: &Path, dest_dir: &Path) -> Result<PathBuf, String> {
     let file_name = src.file_name().ok_or_else(|| "No filename".to_string())?;
-    let dest = dest_dir.join(file_name);
+    let dest = resolve_conflict(dest_dir, file_name);
     if src.is_dir() {
         copy_dir_recursive(src, &dest).map_err(|e| e.to_string())?;
     } else {
@@ -27,7 +51,7 @@ pub fn copy_file(src: &Path, dest_dir: &Path) -> Result<PathBuf, String> {
 
 pub fn move_file(src: &Path, dest_dir: &Path) -> Result<PathBuf, String> {
     let file_name = src.file_name().ok_or_else(|| "No filename".to_string())?;
-    let dest = dest_dir.join(file_name);
+    let dest = resolve_conflict(dest_dir, file_name);
     fs::rename(src, &dest).map_err(|e| e.to_string())?;
     Ok(dest)
 }
@@ -464,7 +488,57 @@ mod tests {
     // Note: trash::delete test skipped — may trigger macOS Finder permission dialogs
 
     #[test]
-    fn test_copy_file_preserves_content() {
+    #[test]
+    fn test_resolve_conflict_no_conflict() {
+        let tmp = TempDir::new().unwrap();
+        let name = std::ffi::OsStr::new("hello.txt");
+        let result = resolve_conflict(tmp.path(), name);
+        assert_eq!(result, tmp.path().join("hello.txt"));
+    }
+
+    #[test]
+    fn test_resolve_conflict_with_existing() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("hello.txt"), "a").unwrap();
+        let name = std::ffi::OsStr::new("hello.txt");
+        let result = resolve_conflict(tmp.path(), name);
+        assert_eq!(result, tmp.path().join("hello (1).txt"));
+    }
+
+    #[test]
+    fn test_resolve_conflict_multiple() {
+        let tmp = TempDir::new().unwrap();
+        fs::write(tmp.path().join("hello.txt"), "a").unwrap();
+        fs::write(tmp.path().join("hello (1).txt"), "b").unwrap();
+        let name = std::ffi::OsStr::new("hello.txt");
+        let result = resolve_conflict(tmp.path(), name);
+        assert_eq!(result, tmp.path().join("hello (2).txt"));
+    }
+
+    #[test]
+    fn test_resolve_conflict_no_extension() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir(tmp.path().join("mydir")).unwrap();
+        let name = std::ffi::OsStr::new("mydir");
+        let result = resolve_conflict(tmp.path(), name);
+        assert_eq!(result, tmp.path().join("mydir (1)"));
+    }
+
+    #[test]
+    fn test_copy_file_no_overwrite() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("file.txt");
+        fs::write(&src, "new").unwrap();
+        let dest_dir = tmp.path().join("out");
+        fs::create_dir(&dest_dir).unwrap();
+        fs::write(dest_dir.join("file.txt"), "old").unwrap();
+        let dest = copy_file(&src, &dest_dir).unwrap();
+        assert_eq!(dest.file_name().unwrap().to_str().unwrap(), "file (1).txt");
+        assert_eq!(fs::read_to_string(&dest).unwrap(), "new");
+        assert_eq!(fs::read_to_string(dest_dir.join("file.txt")).unwrap(), "old");
+    }
+
+        fn test_copy_file_preserves_content() {
         let tmp = TempDir::new().unwrap();
         let src = tmp.path().join("data.txt");
         fs::write(&src, "important data here").unwrap();
