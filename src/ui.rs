@@ -1,3 +1,4 @@
+use crate::preview::format_size;
 use crate::app::{App, FileEntry, InputMode, MouseAreas};
 use chrono::{DateTime, Local};
 use ratatui::{
@@ -397,7 +398,7 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         .split(area);
 
     let info = if let Some(entry) = app.selected_entry() {
-        let size = human_size(entry.size);
+        let size = format_size(entry.size);
         let modified = entry
             .modified
             .map(|m| {
@@ -514,29 +515,17 @@ fn entry_display_name(entry: &FileEntry) -> String {
     name
 }
 
-fn human_size(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut size = bytes as f64;
-    for unit in UNITS {
-        if size < 1024.0 {
-            return format!("{size:.1} {unit}");
-        }
-        size /= 1024.0;
-    }
-    format!("{size:.1} PB")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn test_human_size() {
-        assert_eq!(human_size(0), "0.0 B");
-        assert_eq!(human_size(500), "500.0 B");
-        assert_eq!(human_size(1024), "1.0 KB");
-        assert_eq!(human_size(1048576), "1.0 MB");
-        assert_eq!(human_size(1073741824), "1.0 GB");
+    fn test_format_size() {
+        assert_eq!(format_size(0), "0 B");
+        assert_eq!(format_size(500), "500 B");
+        assert_eq!(format_size(1024), "1.0 KB");
+        assert_eq!(format_size(1048576), "1.0 MB");
+        assert_eq!(format_size(1073741824), "1.0 GB");
     }
 
     #[test]
