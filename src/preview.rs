@@ -1,3 +1,4 @@
+use std::sync::LazyLock;
 use std::fs;
 use std::path::Path;
 use syntect::easy::HighlightLines;
@@ -7,6 +8,9 @@ use syntect::util::LinesWithEndings;
 
 const MAX_PREVIEW_LINES: usize = 100;
 const MAX_FILE_SIZE: u64 = 1024 * 1024; // 1 MB
+
+static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+static THEME_SET: LazyLock<ThemeSet> = LazyLock::new(ThemeSet::load_defaults);
 
 #[derive(Debug, Clone)]
 pub struct PreviewLine {
@@ -297,8 +301,8 @@ fn preview_text_file(path: &Path) -> Vec<PreviewLine> {
         }
     };
 
-    let ss = SyntaxSet::load_defaults_newlines();
-    let ts = ThemeSet::load_defaults();
+    let ss = &*SYNTAX_SET;
+    let ts = &*THEME_SET;
     let syntax = ss
         .find_syntax_for_file(path)
         .ok()
@@ -315,7 +319,7 @@ fn preview_text_file(path: &Path) -> Vec<PreviewLine> {
             });
             break;
         }
-        let _ = h.highlight_line(line, &ss);
+        let _ = h.highlight_line(line, ss);
         lines.push(PreviewLine {
             text: format!("{:>4} │ {}", i + 1, line.trim_end()),
             style: PreviewStyle::Normal,
