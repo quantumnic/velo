@@ -61,6 +61,7 @@ pub struct Tab {
     pub preview_lines: Vec<PreviewLine>,
     pub show_hidden: bool,
     pub sort_by: SortBy,
+    pub sort_reverse: bool,
     pub selected: HashSet<PathBuf>,
     pub git_statuses: HashMap<String, GitFileStatus>,
     pub filter_text: String,
@@ -86,6 +87,7 @@ impl Tab {
             preview_lines: Vec::new(),
             show_hidden,
             sort_by,
+            sort_reverse: false,
             selected: HashSet::new(),
             git_statuses: HashMap::new(),
             filter_text: String::new(),
@@ -130,12 +132,13 @@ impl Tab {
 
     fn sort_entries(&mut self) {
         let sort_by = self.sort_by;
+        let reverse = self.sort_reverse;
         self.entries.sort_by(|a, b| {
             let dir_cmp = b.is_dir.cmp(&a.is_dir);
             if dir_cmp != std::cmp::Ordering::Equal {
                 return dir_cmp;
             }
-            match sort_by {
+            let ord = match sort_by {
                 SortBy::Name => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
                 SortBy::Size => b.size.cmp(&a.size),
                 SortBy::Date => b.modified.cmp(&a.modified),
@@ -152,7 +155,8 @@ impl Tab {
                         .cmp(&ext_b)
                         .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
                 }
-            }
+            };
+            if reverse { ord.reverse() } else { ord }
         });
     }
 
@@ -906,6 +910,12 @@ impl App {
                 };
                 self.tab_mut().sort_by = new_sort;
                 self.status_message = Some(format!("Sort: {new_sort:?}"));
+                self.tab_mut().refresh()?;
+            }
+            KeyCode::Char('R') => {
+                self.tab_mut().sort_reverse = !self.tab().sort_reverse;
+                let dir_label = if self.tab().sort_reverse { "Reversed" } else { "Normal" };
+                self.status_message = Some(format!("Sort order: {dir_label}"));
                 self.tab_mut().refresh()?;
             }
             KeyCode::Char('S') => {
@@ -2025,4 +2035,31 @@ mod tests {
         assert_eq!(app.input_mode, InputMode::Normal);
         assert_eq!(*app.tab().current_dir, sub);
     }
+
+    #[test]
+    fn test_sort_reverse() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().canonicalize().unwrap();
+        fs::write(dir.join("alpha.txt"), "a").unwrap();
+        fs::write(dir.join("beta.txt"), "bb").unwrap();
+        fs::write(dir.join("gamma.txt"), "ccc").unwrap();
+
+        let mut app = make_app(&tmp);
+        // Default sort by name, normal order
+        let names: Vec<&str> = app.tab().entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha.txt", "beta.txt", "gamma.txt"]);
+
+        // Enable reverse
+        app.tab_mut().sort_reverse = true;
+        app.tab_mut().refresh().unwrap();
+        let names: Vec<&str> = app.tab().entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["gamma.txt", "beta.txt", "alpha.txt"]);
+
+        // Disable reverse again
+        app.tab_mut().sort_reverse = false;
+        app.tab_mut().refresh().unwrap();
+        let names: Vec<&str> = app.tab().entries.iter().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["alpha.txt", "beta.txt", "gamma.txt"]);
+    }
+
 }
