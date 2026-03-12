@@ -323,6 +323,8 @@ pub struct App {
     /// Archive compression format choice
     #[allow(dead_code)]
     pub compress_mode: Option<CompressFormat>,
+    /// Help overlay visible
+    pub show_help: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -375,6 +377,7 @@ impl App {
             dual_tab: None,
             dual_right_active: false,
             compress_mode: None,
+            show_help: false,
         })
     }
 
@@ -544,6 +547,12 @@ impl App {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> Result<bool, Box<dyn std::error::Error>> {
+        // Dismiss help overlay on any key
+        if self.show_help {
+            self.show_help = false;
+            return Ok(false);
+        }
+
         if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
             return Ok(true);
         }
@@ -1098,6 +1107,9 @@ impl App {
                         Err(e) => self.status_message = Some(format!("Compress error: {e}")),
                     }
                 }
+            }
+            KeyCode::Char('?') => {
+                self.show_help = true;
             }
             _ => {}
         }
@@ -2063,3 +2075,21 @@ mod tests {
     }
 
 }
+
+    #[test]
+    fn test_help_toggle() {
+        let config = Config::default();
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::with_dir(config, dir.path().to_path_buf()).unwrap();
+        assert!(!app.show_help);
+        // Press '?' to show help
+        let key = KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE);
+        let quit = app.handle_key(key).unwrap();
+        assert!(!quit);
+        assert!(app.show_help);
+        // Any key dismisses
+        let key = KeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE);
+        let quit = app.handle_key(key).unwrap();
+        assert!(!quit);
+        assert!(!app.show_help);
+    }

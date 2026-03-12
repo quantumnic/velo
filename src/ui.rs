@@ -32,6 +32,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_breadcrumb(f, app, chunks[1]);
     draw_panes(f, app, chunks[2]);
     draw_status_bar(f, app, chunks[3]);
+
+    if app.show_help {
+        draw_help_overlay(f, app);
+    }
 }
 
 fn draw_tab_bar(f: &mut Frame, app: &mut App, area: Rect) {
@@ -589,4 +593,63 @@ mod tests {
         let style = entry_style(&entry);
         assert_eq!(style.fg, Some(Color::Cyan));
     }
+}
+
+fn draw_help_overlay(f: &mut Frame, _app: &App) {
+    let area = f.area();
+    // Center a box roughly 60x28
+    let width = 60u16.min(area.width.saturating_sub(4));
+    let height = 28u16.min(area.height.saturating_sub(2));
+    let x = (area.width.saturating_sub(width)) / 2;
+    let y = (area.height.saturating_sub(height)) / 2;
+    let popup = Rect::new(x, y, width, height);
+
+    let help_text = vec![
+        Line::from(Span::styled("  Keybindings", Style::default().add_modifier(Modifier::BOLD))),
+        Line::from(""),
+        Line::from("  j/k  ↑/↓        Navigate files"),
+        Line::from("  h/l  ←/→/Enter  Parent / Open"),
+        Line::from("  g g             Go to top"),
+        Line::from("  G               Go to bottom"),
+        Line::from("  Space           Toggle selection"),
+        Line::from("  /               Filter"),
+        Line::from("  F               Recursive search"),
+        Line::from("  .               Toggle hidden files"),
+        Line::from("  s               Cycle sort mode"),
+        Line::from("  R               Reverse sort order"),
+        Line::from("  r               Rename"),
+        Line::from("  n / N           New file / directory"),
+        Line::from("  d d             Delete to trash"),
+        Line::from("  y y             Yank (copy)"),
+        Line::from("  p p             Paste"),
+        Line::from("  c               chmod (octal)"),
+        Line::from("  t               Toggle tree view"),
+        Line::from("  T               Cycle theme"),
+        Line::from("  S               Disk usage"),
+        Line::from("  Y               Copy path to clipboard"),
+        Line::from("  Ctrl+Y          Copy file content"),
+        Line::from("  D               Toggle dual pane"),
+        Line::from("  Tab             Switch pane (dual)"),
+        Line::from("  m / '           Set / jump bookmark"),
+        Line::from("  u / U           Undo / Redo"),
+        Line::from("  X               Extract archive"),
+        Line::from("  Z               Compress selection"),
+        Line::from("  Ctrl+T/W        New / close tab"),
+        Line::from("  q               Quit"),
+        Line::from(""),
+        Line::from(Span::styled("  Press any key to dismiss", Style::default().fg(Color::DarkGray))),
+    ];
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Help (?) ")
+        .style(Style::default().bg(Color::Black));
+
+    let paragraph = Paragraph::new(help_text)
+        .block(block)
+        .wrap(Wrap { trim: false });
+
+    // Clear the area first
+    f.render_widget(ratatui::widgets::Clear, popup);
+    f.render_widget(paragraph, popup);
 }
