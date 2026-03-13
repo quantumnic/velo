@@ -24,6 +24,8 @@ pub struct FileEntry {
     pub size: u64,
     pub modified: Option<SystemTime>,
     pub git_status: Option<GitFileStatus>,
+    #[cfg(unix)]
+    pub mode: Option<u32>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1442,6 +1444,19 @@ impl App {
     }
 }
 
+/// Format Unix permission bits as an rwx string (e.g. "rwxr-xr--").
+#[cfg(unix)]
+pub fn format_mode(mode: u32) -> String {
+    let mut s = String::with_capacity(9);
+    for shift in [6, 3, 0] {
+        let bits = (mode >> shift) & 0o7;
+        s.push(if bits & 4 != 0 { 'r' } else { '-' });
+        s.push(if bits & 2 != 0 { 'w' } else { '-' });
+        s.push(if bits & 1 != 0 { 'x' } else { '-' });
+    }
+    s
+}
+
 fn read_dir(path: &Path, show_hidden: bool) -> Result<Vec<FileEntry>, Box<dyn std::error::Error>> {
     let mut entries = Vec::new();
     for entry in fs::read_dir(path)? {
@@ -1474,6 +1489,8 @@ fn read_dir(path: &Path, show_hidden: bool) -> Result<Vec<FileEntry>, Box<dyn st
             size: metadata.len(),
             modified: metadata.modified().ok(),
             git_status: None,
+            #[cfg(unix)]
+            mode: Some(metadata.permissions().mode()),
         });
     }
     Ok(entries)
@@ -1616,6 +1633,8 @@ mod tests {
             size: 0,
             modified: None,
             git_status: None,
+            #[cfg(unix)]
+            mode: Some(0o644),
         };
         assert!(entry.is_symlink);
         assert_eq!(entry.symlink_target.as_deref(), Some("/tmp/target"));
@@ -2092,4 +2111,14 @@ mod tests {
         let quit = app.handle_key(key).unwrap();
         assert!(!quit);
         assert!(!app.show_help);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_format_mode() {
+        assert_eq!(format_mode(0o755), "rwxr-xr-x");
+        assert_eq!(format_mode(0o644), "rw-r--r--");
+        assert_eq!(format_mode(0o700), "rwx------");
+        assert_eq!(format_mode(0o000), "---------");
+        assert_eq!(format_mode(0o777), "rwxrwxrwx");
     }

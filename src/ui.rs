@@ -1,5 +1,7 @@
 use crate::preview::format_size;
 use crate::app::{App, FileEntry, InputMode, MouseAreas};
+#[cfg(unix)]
+use crate::app::format_mode;
 use chrono::{DateTime, Local};
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
@@ -415,7 +417,17 @@ fn draw_status_bar(f: &mut Frame, app: &App, area: Rect) {
         } else {
             String::new()
         };
-        format!(" {} │ {} │ {}{symlink_info}", entry.name, size, modified)
+        {
+            #[cfg(unix)]
+            let perms = entry.mode.map(format_mode).unwrap_or_default();
+            #[cfg(not(unix))]
+            let perms = String::new();
+            if perms.is_empty() {
+                format!(" {} │ {} │ {}{symlink_info}", entry.name, size, modified)
+            } else {
+                format!(" {} │ {} │ {} │ {}{symlink_info}", entry.name, size, modified, perms)
+            }
+        }
     } else {
         String::new()
     };
@@ -543,6 +555,8 @@ mod tests {
             size: 0,
             modified: None,
             git_status: None,
+            #[cfg(unix)]
+            mode: Some(0o644),
         };
         assert_eq!(entry_display_name(&entry), "docs/");
     }
@@ -558,6 +572,8 @@ mod tests {
             size: 0,
             modified: None,
             git_status: None,
+            #[cfg(unix)]
+            mode: Some(0o644),
         };
         assert_eq!(entry_display_name(&entry), "link → /tmp/target");
     }
@@ -573,6 +589,8 @@ mod tests {
             size: 0,
             modified: None,
             git_status: None,
+            #[cfg(unix)]
+            mode: Some(0o644),
         };
         let style = entry_style(&entry);
         assert_eq!(style.fg, Some(Color::Blue));
@@ -589,6 +607,8 @@ mod tests {
             size: 0,
             modified: None,
             git_status: None,
+            #[cfg(unix)]
+            mode: Some(0o644),
         };
         let style = entry_style(&entry);
         assert_eq!(style.fg, Some(Color::Cyan));
