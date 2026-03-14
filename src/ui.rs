@@ -619,7 +619,7 @@ fn draw_help_overlay(f: &mut Frame, _app: &App) {
     let area = f.area();
     // Center a box roughly 60x28
     let width = 60u16.min(area.width.saturating_sub(4));
-    let height = 28u16.min(area.height.saturating_sub(2));
+    let height = 29u16.min(area.height.saturating_sub(2));
     let x = (area.width.saturating_sub(width)) / 2;
     let y = (area.height.saturating_sub(height)) / 2;
     let popup = Rect::new(x, y, width, height);
@@ -652,6 +652,7 @@ fn draw_help_overlay(f: &mut Frame, _app: &App) {
         Line::from("  Tab             Switch pane (dual)"),
         Line::from("  m / '           Set / jump bookmark"),
         Line::from("  u / U           Undo / Redo"),
+        Line::from("  ~               Go to home directory"),
         Line::from("  X               Extract archive"),
         Line::from("  Z               Compress selection"),
         Line::from("  Ctrl+T/W        New / close tab"),

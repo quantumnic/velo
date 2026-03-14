@@ -719,6 +719,16 @@ impl App {
                 self.tab_mut().show_hidden = new_hidden;
                 self.tab_mut().rebuild_tree();
             }
+            KeyCode::Char('~') => {
+                if let Some(home) = dirs::home_dir() {
+                    let tab = self.tab_mut();
+                    tab.current_dir = home;
+                    tab.cursor = 0;
+                    tab.tree_mode = false;
+                    tab.refresh()?;
+                    self.status_message = Some("Jumped to home directory".to_string());
+                }
+            }
             _ => {}
         }
         Ok(false)
@@ -967,6 +977,15 @@ impl App {
             KeyCode::Char('\'') => {
                 self.input_mode = InputMode::JumpBookmark;
                 self.status_message = Some("Jump to bookmark: ".to_string());
+            }
+            KeyCode::Char('~') => {
+                if let Some(home) = dirs::home_dir() {
+                    let tab = self.tab_mut();
+                    tab.current_dir = home;
+                    tab.cursor = 0;
+                    tab.refresh()?;
+                    self.status_message = Some("Jumped to home directory".to_string());
+                }
             }
             KeyCode::Char('c') => {
                 #[cfg(unix)]
@@ -2093,8 +2112,6 @@ mod tests {
         assert_eq!(names, vec!["alpha.txt", "beta.txt", "gamma.txt"]);
     }
 
-}
-
     #[test]
     fn test_help_toggle() {
         let config = Config::default();
@@ -2122,3 +2139,21 @@ mod tests {
         assert_eq!(format_mode(0o000), "---------");
         assert_eq!(format_mode(0o777), "rwxrwxrwx");
     }
+
+    #[test]
+    fn test_home_directory_navigation() {
+        let tmp = TempDir::new().unwrap();
+        let mut app = make_app(&tmp);
+        // Press '~' to go to home directory
+        let key = KeyEvent::new(KeyCode::Char('~'), KeyModifiers::NONE);
+        let quit = app.handle_key(key).unwrap();
+        assert!(!quit);
+        if let Some(home) = dirs::home_dir() {
+            assert_eq!(*app.current_dir(), home);
+            assert_eq!(
+                app.status_message,
+                Some("Jumped to home directory".to_string())
+            );
+        }
+    }
+}
