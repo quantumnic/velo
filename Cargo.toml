@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["Nicola Spieser"]
 description = "⚡ A blazing-fast terminal file manager written in Rust"
 license = "MIT"
-repository = "https://github.com/redbasecap-buiss/velo"
+repository = "https://github.com/quantumnic/velo"
 keywords = ["terminal", "file-manager", "tui", "cli"]
 categories = ["command-line-utilities"]
 
