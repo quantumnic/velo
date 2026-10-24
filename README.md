@@ -2,7 +2,7 @@
 
 **A blazing-fast terminal file manager written in Rust.**
 
-[![CI](https://github.com/redbasecap-buiss/velo/actions/workflows/ci.yml/badge.svg)](https://github.com/redbasecap-buiss/velo/actions)
+[![CI](https://github.com/quantumnic/velo/actions/workflows/ci.yml/badge.svg)](https://github.com/quantumnic/velo/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <p align="center">
@@ -36,20 +36,20 @@
 ### From source (cargo)
 
 ```bash
-cargo install --git https://github.com/redbasecap-buiss/velo
+cargo install --git https://github.com/quantumnic/velo
 ```
 
 ### Homebrew (macOS)
 
 ```bash
-brew tap redbasecap-buiss/tap
+brew tap quantumnic/tap
 brew install velo
 ```
 
 ### From source (manual)
 
 ```bash
-git clone https://github.com/redbasecap-buiss/velo
+git clone https://github.com/quantumnic/velo
 cd velo
 cargo build --release
 cp target/release/velo /usr/local/bin/
