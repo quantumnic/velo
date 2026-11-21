@@ -1,5 +1,7 @@
 # ⚡ velo
 
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/redbasecap)
+
 **A blazing-fast terminal file manager written in Rust.**
 
 [![CI](https://github.com/quantumnic/velo/actions/workflows/ci.yml/badge.svg)](https://github.com/quantumnic/velo/actions)
